@@ -1,0 +1,33 @@
+{
+  "name": "zcode-whale-widget",
+  "version": "1.0.0",
+  "description": "ZCode 版 DeepSeek 余额小鲸鱼挂件：常驻网页挂件显示余额与今日已用，支持峰谷定价、每轮对话消耗统计、随机台词、音效与拖拽吸附。移植自 MeteorNOX 的 DSH 版 dsh-whale-widget。",
+  "description_i18n": {
+    "en": "DeepSeek balance whale widget for ZCode: a persistent browser widget showing balance and today's usage, with peak/off-peak pricing, per-turn cost, quotes, sound effects, and drag-to-snap. Ported from MeteorNOX's DSH plugin dsh-whale-widget.",
+    "zh-CN": "ZCode 版 DeepSeek 余额小鲸鱼挂件：常驻网页挂件显示余额与今日已用，支持峰谷定价、每轮对话消耗统计、随机台词、音效与拖拽吸附。移植自 MeteorNOX 的 DSH 版 dsh-whale-widget。"
+  },
+  "author": {
+    "name": "Ported from MeteorNOX/DeepSeek-Balance-Whale-Widget"
+  },
+  "license": "MIT",
+  "keywords": [
+    "deepseek",
+    "balance",
+    "widget",
+    "whale",
+    "usage",
+    "pricing"
+  ],
+  "commands": "commands",
+  "skills": "skills",
+  "hooks": "hooks/hooks.json",
+  "mcpServers": {
+    "whale": {
+      "enabled": true,
+      "command": "node",
+      "args": [
+        "${ZCODE_PLUGIN_ROOT}/lib/mcp-server.mjs"
+      ]
+    }
+  }
+}

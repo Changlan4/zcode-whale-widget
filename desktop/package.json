@@ -1,0 +1,7 @@
+{
+  "name": "zcode-whale-overlay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Transparent always-on-top overlay window that hosts the ZCode whale widget.",
+  "main": "main.cjs"
+}

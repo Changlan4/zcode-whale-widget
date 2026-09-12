@@ -1,0 +1,13 @@
+# 运行时与开发过程中的产物，不应入库
+.mimosa/
+node_modules/
+*.log
+
+# 本机数据目录（配置、账本、Electron 运行时）不在这里，但以防有人拷贝进来
+desktop-runtime/
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

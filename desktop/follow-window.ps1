@@ -1,0 +1,196 @@
+# Keeps the whale overlay glued to the ZCode main window.
+#
+# Started as a resident child process by desktop/main.cjs, with the overlay's own
+# HWND as argument. It reports two things the main process then applies:
+#   1. The ZCode window rectangle (on every change) -> the overlay positions the
+#      whale inside that rect, so the whale follows ZCode when it is moved or
+#      resized.
+#   2. Whether the overlay should be visible at all: hidden while ZCode is
+#      minimized and while ZCode is covered by another app. Clicks on the overlay
+#      itself do not count as "switched away".
+#
+# Why the polling loop is compiled C# instead of plain PowerShell:
+#   This process runs continuously, so its per-tick cost is what decides whether
+#   the interval can be short. An interpreted PowerShell loop costs ~3% of a core
+#   at 40ms just in interpreter overhead (object construction, function calls,
+#   string building). The same loop compiled costs a few microseconds per tick,
+#   which makes even a 16ms interval essentially free and keeps the follow feel
+#   tight. The expensive part - Process.GetProcessesByName to locate the ZCode
+#   window and pid lists - stays on a separate time budget (-ProcessCacheMs).
+#
+# Output protocol (one JSON object per line):
+#   {"x":..,"y":..,"w":..,"h":..,"show":bool}   ZCode rect (physical px) + overlay visibility
+#   {"hide":true}                               ZCode window not found (e.g. restarting)
+#   {"gone":true}                               ZCode exited; the overlay should quit
+#
+# NOTE: keep this file pure ASCII. Windows PowerShell 5.1 reads BOM-less .ps1
+# files using the system ANSI code page, so non-ASCII comments can be decoded
+# into bytes that break parsing.
+param(
+  [Parameter(Mandatory = $true)][string]$OverlayHwnd,
+  # How often to re-read the ZCode window rectangle. Lower = snappier follow.
+  [int]$IntervalMs = 40,
+  # How often to refresh the expensive process/window-handle lookup.
+  [int]$ProcessCacheMs = 3000
+)
+
+$ErrorActionPreference = 'SilentlyContinue'
+
+# Clamp the interval: below ~16ms there is no visible gain, above 2s the whale
+# would feel disconnected from the window.
+if ($IntervalMs -lt 16) { $IntervalMs = 16 }
+if ($IntervalMs -gt 2000) { $IntervalMs = 2000 }
+if ($ProcessCacheMs -lt 500) { $ProcessCacheMs = 500 }
+
+$targetProcess = if ($env:WHALE_TARGET_PROCESS) { $env:WHALE_TARGET_PROCESS } else { 'ZCode' }
+
+$source = @'
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Threading;
+
+public static class WhaleFollow
+{
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hWnd, out RECT r);
+    [DllImport("user32.dll")] static extern bool IsIconic(IntPtr hWnd);
+    [DllImport("user32.dll")] static extern bool IsWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+
+    static HashSet<int> _targetPids = new HashSet<int>();
+    static HashSet<int> _electronPids = new HashSet<int>();
+    static IntPtr _targetHwnd = IntPtr.Zero;
+
+    // Expensive: enumerates processes. Only called on the cache budget.
+    static void UpdateCache(string targetName)
+    {
+        IntPtr hwnd = IntPtr.Zero;
+        HashSet<int> tids = new HashSet<int>();
+        try
+        {
+            Process[] procs = Process.GetProcessesByName(targetName);
+            foreach (Process p in procs)
+            {
+                tids.Add(p.Id);
+                if (hwnd == IntPtr.Zero && p.MainWindowHandle != IntPtr.Zero) hwnd = p.MainWindowHandle;
+                p.Dispose();
+            }
+        }
+        catch (Exception) { }
+        _targetHwnd = hwnd;
+        _targetPids = tids;
+
+        HashSet<int> eids = new HashSet<int>();
+        try
+        {
+            Process[] procs = Process.GetProcessesByName("electron");
+            foreach (Process p in procs) { eids.Add(p.Id); p.Dispose(); }
+        }
+        catch (Exception) { }
+        _electronPids = eids;
+    }
+
+    public static void Run(IntPtr overlay, int intervalMs, int cacheMs, string targetName)
+    {
+        Console.Error.WriteLine(
+            "follow-start overlay=" + overlay.ToInt64() + " valid=" + IsWindow(overlay) +
+            " interval=" + intervalMs + " cache=" + cacheMs + " target=" + targetName);
+        UpdateCache(targetName);
+        // TickCount is an int millisecond counter (wraps every ~49 days). Plain
+        // int subtraction stays correct across the wrap, and TickCount64 does not
+        // exist on the .NET Framework that Windows PowerShell 5.1 compiles against.
+        int lastCache = Environment.TickCount;
+        int missSince = 0;
+        bool haveSig = false;
+        int lastL = 0, lastT = 0, lastW = 0, lastH = 0;
+        bool lastShow = false;
+
+        while (true)
+        {
+            if (!IsWindow(overlay)) return;
+
+            int now = Environment.TickCount;
+            if (now - lastCache >= cacheMs) { UpdateCache(targetName); lastCache = now; }
+
+            // Cheap path: reuse the cached handle while it is still valid.
+            IntPtr z = (_targetHwnd != IntPtr.Zero && IsWindow(_targetHwnd)) ? _targetHwnd : IntPtr.Zero;
+            if (z == IntPtr.Zero)
+            {
+                if (missSince == 0)
+                {
+                    missSince = now;
+                    Console.Out.WriteLine("{\"hide\":true}");
+                    Console.Out.Flush();
+                }
+                else if (now - missSince >= 5000)
+                {
+                    Console.Out.WriteLine("{\"gone\":true}");
+                    Console.Out.Flush();
+                    return;
+                }
+                Thread.Sleep(intervalMs);
+                continue;
+            }
+            missSince = 0;
+
+            RECT r;
+            if (GetWindowRect(z, out r))
+            {
+                bool minimized = IsIconic(z);
+                uint fgPid = 0;
+                IntPtr fg = GetForegroundWindow();
+                if (fg != IntPtr.Zero) GetWindowThreadProcessId(fg, out fgPid);
+                bool fgIsTarget = _targetPids.Contains((int)fgPid);
+                bool fgIsOverlay = _electronPids.Contains((int)fgPid);
+                bool show = !minimized && (fgIsTarget || fgIsOverlay);
+
+                int w = r.Right - r.Left;
+                int h = r.Bottom - r.Top;
+                if (!haveSig || r.Left != lastL || r.Top != lastT || w != lastW || h != lastH || show != lastShow)
+                {
+                    haveSig = true;
+                    lastL = r.Left; lastT = r.Top; lastW = w; lastH = h; lastShow = show;
+
+                    // Decision inputs go to stderr; the main process records them
+                    // only when the debug log is enabled.
+                    Console.Error.WriteLine(
+                        "state show=" + (show ? "true" : "false") +
+                        " minimized=" + (minimized ? "true" : "false") +
+                        " fgPid=" + fgPid +
+                        " fgIsZCode=" + (fgIsTarget ? "true" : "false") +
+                        " fgIsOverlay=" + (fgIsOverlay ? "true" : "false"));
+
+                    Console.Out.WriteLine(
+                        "{\"x\":" + r.Left + ",\"y\":" + r.Top + ",\"w\":" + w + ",\"h\":" + h +
+                        ",\"show\":" + (show ? "true" : "false") + "}");
+                    Console.Out.Flush();
+                }
+            }
+
+            Thread.Sleep(intervalMs);
+        }
+    }
+}
+'@
+
+# A compile failure must be visible: SilentlyContinue would swallow Add-Type's
+# error and show up as "script exits immediately, overlay quits with it", which
+# is a nasty thing to debug.
+try {
+  Add-Type -TypeDefinition $source -Language CSharp -ErrorAction Stop
+} catch {
+  [Console]::Error.WriteLine('csharp-compile-failed: ' + $_.Exception.Message)
+  exit 1
+}
+
+try {
+  [WhaleFollow]::Run([IntPtr][long]$OverlayHwnd, $IntervalMs, $ProcessCacheMs, $targetProcess)
+} catch {
+  [Console]::Error.WriteLine('follow-loop-error: ' + $_.Exception.Message)
+  exit 1
+}
