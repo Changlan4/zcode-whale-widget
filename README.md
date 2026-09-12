@@ -389,6 +389,7 @@ zcode-whale-widget/
 - 浮层里**吸附没有滑动动画**（位置直接就位）。这是为了避开透明窗口的合成层错位——详见下面「踩坑记录」；网页版动画完整。
 - 浮层穿透的必然代价：点击某个位置前，指针得先落在鲸鱼上。
 - 菜单里的数字输入框在浮层里建议用箭头/滑块，因为透明浮层窗口默认不抢键盘焦点。
+- 菜单默认弹在鲸鱼头顶；鲸鱼被拖到窗口顶部、上方放不下时会翻到按钮下方（两种模式都一样）。
 - 每轮消耗只统计 ZCode 自己记录的主对话轮次；ZCode 之外调用的 API 不计入。
 
 ### 踩坑记录（写给后来改这份代码的人）
@@ -401,6 +402,8 @@ zcode-whale-widget/
 6. **`desktop/follow-window.ps1` 必须保持纯 ASCII**。Windows PowerShell 5.1 按系统 ANSI 代码页读取无 BOM 的 `.ps1`，中文注释会被解码成破坏语法的字节，脚本直接退出、跟随失效。
 7. **`$ErrorActionPreference='SilentlyContinue'` 会吞掉 `Add-Type` 的编译错误**，表现成"脚本秒退、浮层跟着退出"。该脚本已改为显式输出编译/运行错误。
 8. **C# 内联代码只能用 .NET Framework 的 API**（PS 5.1 的编译目标），例如 `Environment.TickCount64` 不存在，要用 `TickCount`。
+9. **浮层里有两套坐标系，不能混用**。`viewport()` 返回的是 ZCode 窗口矩形（鲸鱼的位置、吸附、居中都按它算），而 `position:fixed` 的元素（挂在 `body` 上的挂件菜单）参照的是页面自身视口，也就是铺满整个工作区的浮层窗口。窗口化 ZCode 时两者差着几百像素，拿 `viewport()` 去算 `position:fixed` 的偏移会把菜单整个甩到屏幕外（实测菜单被算到 x=2812，而浮层只有 2560 宽）。这类 fixed 元素一律用 `pageViewport()`。
+10. **挂在 `body` 上的 fixed 元素不会跟着 root 走**。浮层里 ZCode 窗口一移动，鲸鱼跟着动、菜单留在原地，所以 `settle()` 里每次都带一次 `positionMenu()`。
 
 ---
 
