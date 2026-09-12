@@ -95,7 +95,13 @@
 
 ### 步骤
 
-1. **把仓库放到一个固定位置**（不要放在会被清理的临时目录），例如 `~/.zcode/plugins/zcode-whale-widget`。
+1. **把仓库克隆到一个固定位置**（不要放在会被清理的临时目录）：
+
+   ```bash
+   git clone https://github.com/nb10yyds/zcode-whale-widget.git ~/.zcode/plugins/zcode-whale-widget
+   ```
+
+   后面的命令都假设你在仓库根目录下执行。
 
 2. **注册为本地插件市场**，二选一：
 
