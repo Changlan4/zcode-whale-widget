@@ -121,6 +121,9 @@
    }
    ```
 
+   > 想把这份插件分享给别人从 GitHub 安装，把 `source` 换成仓库形式即可：
+   > `"source": { "source": "github", "repo": "nb10yyds/zcode-whale-widget" }`
+
 3. **安装并启用插件**：在插件管理里安装 `zcode-whale-widget`。手工方式则在 `~/.zcode/cli/config.json` 里写：
 
    ```json
