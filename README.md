@@ -1,14 +1,18 @@
-# ZCode 版 DeepSeek 余额小鲸鱼挂件
+# ZCode 会话用量方框
 
-> 在 ZCode 里常驻一只小鲸鱼：显示 **DeepSeek 余额**、**今日已用**、**当前峰谷时段**，每轮对话结束还会弹一个气泡告诉你 **上一轮花了多少钱**。
+> 在 ZCode 界面上浮一个方框，实时显示**当前会话**自新建以来的累计用量：
 >
-> 它浮在 ZCode 窗口的右下角，跟着窗口移动/最小化/关闭，指针不在它身上时点击直接穿透到下面的应用——**不挡任何操作**。
+> - **累计 token**：输入命中缓存 / 输入未命中 / 输出，三分
+> - **累计花费**：对应上面三分，按峰谷单价换算成美元
+> - **已用上下文**：最近一次请求占用了多少 / 上限 100 万
+>
+> 从会话列表点开另一个会话时，方框的数字**跟着切换**。它跟着 ZCode 窗口移动/最小化/关闭，指针不在方框上时点击直接穿透到下面的应用——**不挡任何操作**。
 
 ---
 
 ## 关于参考项目（请先读这一段）
 
-**本项目不是原创，是移植版。** 所有的视觉与交互设计、鲸鱼素材、音效、台词、峰谷定价表和计费口径，都来自下面这个项目：
+**本项目是改造版，源于一个移植项目。** 早期形态是「DeepSeek 余额小鲸鱼挂件」，其视觉与交互设计、鲸鱼素材、音效、台词、峰谷定价表和计费口径来自：
 
 | | |
 |---|---|
@@ -17,47 +21,104 @@
 | **许可** | MIT（Copyright (c) 2026 MeteorNOX） |
 | **原始形态** | DSH（DeepSeek Harness）的 Web 插件 |
 
-上游是一个挂在 **DSH 网页界面**右下角的挂件：它由宿主插件（`lib/index.js`）通过 `webServer` 注册路由，并用 `tapIndex` 把 `widget.js` 注入进 DSH 的页面。它监听宿主进程内的 `session/event` 事件流来统计每轮消耗，从 DSH 的凭据服务读 `DEEPSEEK_API_KEY`。
+上游是挂在 **DSH 网页界面**右下角的鲸鱼挂件：由宿主插件通过 `webServer` 注册路由、用 `tapIndex` 把 `widget.js` 注入 DSH 页面，监听宿主进程内的 `session/event` 统计每轮消耗，从 DSH 凭据服务读 `DEEPSEEK_API_KEY`。
 
-**ZCode 没有这些扩展点**（客户端不支持往界面注入脚本，插件也没有凭据服务、拿不到进程内事件流），所以宿主适配层是重写的，但**挂件本身的观感与算法追求与上游一致**。
+**ZCode 没有这些扩展点**（客户端不支持往界面注入脚本，插件也没有凭据服务、拿不到进程内事件流），所以宿主适配层是重写的。
 
-### 具体哪些沿用、哪些重写
+### 当前形态：鲸鱼视觉层已移除
 
-**沿用自上游（保持一致，含数值）**
+现在的方框**不再是鲸鱼**。视觉层（图片 `DSniang*.png`、动图 `rua.gif`、音效 `Ya*/D*`、气泡 SVG、按压动画、随机台词、菜单）已全部删除，改为一个朴素的方框面板。
 
-- `assets/` 下全部素材：鲸鱼形象 `DSniang1.png` / `DSniang02.png`、`rua.gif`、两套音效（`Ya1/Ya2`、`D1/D2`），原样复制。
-- 气泡 SVG 几何（1026×700 画布上的大椭圆、尾巴半椭圆、两个小气泡）、描边色与线宽。
-- 字号档（A/B/P/C 四档与 `--zcw-u` 联动变量）、金额格式、文字块定位。
-- 动画参数：数字滚动 700ms ease-out、按压 `scaleY(0.88) scaleX(1.05)` 与 `cubic-bezier(.34,1.56,.64,1)`、气泡 5 秒自动收起、60 秒自动刷新。
-- 交互：拖拽移动、四分之一区域吸附（四边可组合成角落）、吸附左缘时整体水平镜像、按图片 alpha 通道做命中检测（透明区穿透）。
-- 随机台词六组的文案与权重、"每轮消耗"金额气泡的两行样式与自动关闭秒数。
-- 峰谷定价表与时段规则（工作日北京时间 9–12、14–18 为高峰；2026-08-23 起周末全天谷价），以及"缓存读取按命中价、未命中输入与缓存写入按未命中价、输出与思考按输出价"的分档思路。
-- 记账模式语义：按观测到的余额下降累计、充值不扣减、币种切换只重置基准、跨天归档保留 30 天。
+**沿用自上游的部分**
+
+- 峰谷定价**思想**与时段规则（工作日北京时间 9–12、14–18 为高峰，周末全天谷时）。
+- 「缓存读取按命中价、未命中输入按未命中价、输出按输出价」的分档思路，以及 `input 含缓存命中` 这个关键口径。
+- 记账模式语义（按观测到的余额下降累计、充值不扣减、币种切换只重置基准、跨天归档保留 30 天）。
 - 余额接口的取项规则：多币种数组顺序不固定，优先 CNY 且大于 0；以及 25 秒缓存、in-flight 去重、瞬时失败回退旧值并标记 `stale`。
 
-**为 ZCode 重写**
+**为 ZCode 重写 / 新增**
 
-- **呈现层**：上游注入 DSH 网页；这里改为自带本地服务 + 独立页面，并额外提供一个透明置顶的桌面浮层窗口。
-- **凭据发现**：上游从 DSH 凭据服务读；这里做成环境变量 → 插件配置 → 复用 ZCode 客户端里已配的 DeepSeek provider 三级查找。
-- **每轮消耗数据源**：上游监听 `session/event`；这里读 ZCode 落库的 `turn_usage` 表（并支持回退到模型 I/O 日志）。
+- **方框用量面板**：`lib/session-usage.mjs`（会话判定 + 聚合）、`lib/box.js` + `lib/box-css.mjs`（渲染与交互）、`lib/pricing-usd.mjs`（美元峰谷价）。
+- **呈现层**：上游注入 DSH 网页；这里改为自带本地服务 + 独立页面，并提供一个透明置顶的桌面浮层窗口。
+- **凭据发现**：环境变量 → 插件配置 → 复用 ZCode 客户端里已配的 DeepSeek provider 三级查找。
+- **每轮消耗数据源**：上游监听 `session/event`；这里读 ZCode 落库的 `turn_usage` 表（支持回退到模型 I/O 日志）。
 - **平台集成**：MCP 服务、SessionStart 自启 hook、skill、`/whale` 命令、命令行工具。
 - **安全加固**：出站主机白名单与地址校验、本地服务的 Host/Origin 校验与关闭令牌。
 
-上游的 `LICENSE` 原样保留在本仓库中，另有 [`NOTICE`](./NOTICE) 逐条列出沿用与新增的部分。
+上游的 `LICENSE` 原样保留在本仓库中，另有 [`NOTICE`](./NOTICE)。
+
+> 目录名、插件名、MCP 工具前缀仍叫 `zcode-whale-widget` / `whale_*`（改名要动插件注册与 MCP 工具前缀，没必要），但它们指向的已是方框。
 
 ---
 
 ## 功能
 
+### 方框（主功能）
+
+- **累计 token**，三分显示：输入命中缓存 / 输入未命中 / 输出。数字**全量显示**（超过一亿才缩写成「X.XX亿」）。
+- **累计花费**，同样三分，附总计。单价按**峰谷**分档，逐条调用按它自己的时刻判档。
+- **已用上下文**：最近一次主请求的输入总量 ÷ 100 万，带进度条。
+- **跟随会话**：从会话列表点开另一个会话，标题与三个数字整体切换。
+- 拖拽移动、贴边吸附、位置与字号记忆（`localStorage`）、每 5 秒刷新。
+- 浮层下**默认鼠标穿透**：只有指针压在方框上时才接管鼠标。
+
+### 保留的辅助能力（MCP / 命令行）
+
 - **余额**：来自 `https://api.deepseek.com/user/balance`。
-- **今日已用**，两种模式（菜单切换）：
-  - **小鲸鱼记账**（默认，免令牌）：观测余额下降自动累计，跨天归档保留 30 天，币种切换不会记成消费。
-  - **实时·令牌**：用平台令牌调用量接口取 token 分桶，按峰谷定价换算（该接口只返回 token 数，不返回金额）。令牌缺失时自动回落记账模式并标注。
-- **每轮对话消耗**：读取 ZCode 记录的每轮真实 token 用量，换算金额后弹出红色金额气泡（自动关闭秒数可设，填 0 表示手动关闭）。可逐档核对明细。
-- **挂件交互**：拖拽、四边四分之一吸附、左吸附水平镜像（文字保持可读）、按压 Q 弹 + 音效、余额变化数字滚动、点击鲸鱼弹气泡、再点切随机台词（含 rua 动图）。
-- **汉堡菜单**：大小 0.6–2.5×、音效、音量、用量模式、峰谷文案风格、气泡开关、每轮消耗提示与自动关闭秒数、避让滚动条，浮层下还有「跟随延迟」。
-- **会话自启**：打开 ZCode（新会话）时自动拉起，不用手动开。
-- **随窗口联动**：ZCode 移动/缩放时跟着走，最小化或被别的应用盖住时隐藏，ZCode 退出时一起退出。
+- **今日已用**，两种模式：**记账**（默认，免令牌，观测余额下降累计）与**实时·令牌**（需平台令牌）。
+- **每轮对话消耗**：读 ZCode 记录的每轮真实 token 用量换算金额（`node lib/cli.mjs turn`）。
+
+### 会话自启与窗口联动
+
+- **会话自启**：打开 ZCode（新会话）时自动拉起服务与浮层。
+- **随窗口联动**：ZCode 移动/缩放时跟着走，最小化或被别的应用盖住时隐藏，退出时一起退出。
+
+---
+
+## 统计口径
+
+| 项目 | 算法 |
+|---|---|
+| 输入 · 命中缓存 | `sum(cache_read_input_tokens)` |
+| 输入 · 未命中 | `sum(input_tokens) - sum(cache_read_input_tokens)` |
+| 输出 | `sum(output_tokens)` |
+| 已用上下文 | 最近一条 `main_turn` 的 `input_tokens`（含缓存命中，因为命中部分同样占窗口） |
+
+**两个必须记住的坑**（改计价代码前务必读 `lib/pricing-usd.mjs` 的注释）：
+
+1. ZCode 的 `input_tokens` 是**含缓存命中的总输入**，未命中必须减掉命中部分。否则缓存那 99% 会被按未命中价重复计费，金额虚高几十倍。
+2. `output_tokens` **已包含** `reasoning_tokens`，输出只按 `output_tokens` 计，再加一遍就是重复收费。
+
+**统计范围**：当前会话自新建以来，只算 `query_source='main_turn'` 的调用（自动生成标题的开销不计入）。子代理/工作流是独立会话，不并入主会话。
+
+### 单价（美元 / 每百万 token）
+
+| 项目 | 谷时 | 高峰 |
+|---|---|---|
+| 输入 · 命中缓存 | $0.003 | $0.006 |
+| 输入 · 未命中 | $0.15 | $0.30 |
+| 输出 | $0.60 | $1.20 |
+
+高峰 = 北京时间**周一至周五 09:00–12:00 与 14:00–18:00**，其余（含周末）为谷时。改价目只改 `lib/pricing-usd.mjs` 的 `USD_PRICES`。
+
+### 实时粒度
+
+ZCode 在**每次模型请求完成时**才落库，没有「逐字滚动」的中间态。一轮对话里模型每完成一次内部请求（通常 10–25 次）数字跳一次，间隔几秒到几十秒。切换会话与上下文是即时的（前端每 5 秒轮询）。
+
+---
+
+## 当前会话是怎么确定的
+
+ZCode 插件拿不到客户端 UI 事件。唯一能反映「用户正在看哪个会话」的可读信号是**客户端日志**：
+
+```
+<dataBaseDir>/.zcode/v2/logs/YYYY-MM-DD.log
+  ...v4 session data lease acquired {"event":"v4.session_data.acquire","sessionId":"sess_...",...}
+```
+
+你每从会话列表点开一个会话，客户端就写一行。`lib/session-usage.mjs` 用**增量扫描**读它（记住上次偏移，只读新增部分）——不能只读文件尾部，因为客户端每分钟都写内存采样，一次 acquire 几百 KB 后就会被挤出尾部窗口。日志里读不到时才回退到「最近有调用的会话」（此时接口的 `sessionSource` 会是 `db` 而非 `log`，可用来判断）。
+
+`dataBaseDir` 取自 `~/.zcode/v2/setting.json`。
 
 ---
 
@@ -65,23 +126,26 @@
 
 ### 1. 桌面浮层（推荐）
 
-一个独立的 Electron 窗口：透明、无边框、不进任务栏、始终置顶，**覆盖 ZCode 窗口范围但默认鼠标穿透**——只有指针压到鲸鱼、气泡或菜单上时才接管鼠标，其余位置的点击照常落到下面的 ZCode。
+一个独立的 Electron 窗口：透明、无边框、不进任务栏、始终置顶，**覆盖 ZCode 窗口范围但默认鼠标穿透**——只有指针压在方框上时才接管鼠标，其余位置的点击照常落到下面的 ZCode。
 
 ### 2. 网页版（零依赖）
 
-挂件服务本身就是个本地网页，浏览器打开地址即可看到同一只鲸鱼：
+服务本身就是个本地网页，浏览器打开地址即可看到同一个方框：
 
 ```
-                                    ╭──────────────────────╮
-                                    │    DeepSeek 余额     │
-                                    │      ¥ 3.85          │
-                                  Ⓐ│   今日已用 ¥ 0.09    │
-                                    ╰───────────────╮──────╯
-                                              ○     ○
-                                            🐳  （鲸鱼本体）
+╭──────────────────────────────────────────╮
+│ ● 理解 zcode-whale-widget 桌面安装步骤    │
+│ ▎输入 · 命中缓存   27,872,768    $0.0836  │
+│ ▎输入 · 未命中        400,651    $0.0601  │
+│ ▎输出                375,342    $0.2252  │
+│ ──────────────────────────────────────── │
+│ 已用上下文   236,366 / 1,000,000 · 23.6% │
+│ ▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+│ 合计 28,648,761 tokens · $0.3689 · 191次  │
+╰──────────────────────────────────────────╯
 ```
 
-两种方式共用同一个服务与同一份挂件代码；浮层只是多了一个承载窗口。
+两种方式共用同一个服务与同一份方框代码；浮层只是多了一个承载窗口。
 
 ---
 
@@ -95,7 +159,7 @@
 
 ### 步骤
 
-1. **把仓库克隆到一个固定位置**（不要放在会被清理的临时目录）：
+1. 把仓库克隆到本地（例如 `E:\AI\ZCode\.zcode\plugins\zcode-whale-widget`）：
 
    ```bash
    git clone https://github.com/nb10yyds/zcode-whale-widget.git ~/.zcode/plugins/zcode-whale-widget
@@ -116,13 +180,10 @@
      "id": "zcode-whale-local",
      "source": { "source": "directory", "path": "<仓库绝对路径>" },
      "name": "zcode-whale-local",
-     "description": "Local marketplace for the ZCode DeepSeek balance whale widget.",
+     "description": "Local marketplace for the ZCode session usage box.",
      "pluginCount": 1
    }
    ```
-
-   > 想把这份插件分享给别人从 GitHub 安装，把 `source` 换成仓库形式即可：
-   > `"source": { "source": "github", "repo": "nb10yyds/zcode-whale-widget" }`
 
 3. **安装并启用插件**：在插件管理里安装 `zcode-whale-widget`。手工方式则在 `~/.zcode/cli/config.json` 里写：
 
@@ -144,70 +205,45 @@
    node lib/cli.mjs desktop install
    ```
 
-装好后打开 ZCode，鲸鱼会自己出现。
+装好后打开 ZCode，方框会自己出现。
+
+> **重要：改代码后要同步到缓存。** 插件安装时会把仓库**复制**一份到
+> `~/.zcode/cli/plugins/cache/zcode-whale-local/zcode-whale-widget/<版本>/`，
+> MCP、hook、浮层全部跑缓存那份。改了 clone 里的代码必须同步过去（或重装插件）才生效。
 
 ---
 
 ## 首次配置
 
-### API Key（通常不用配）
+### API Key（余额功能用，方框不需要）
 
 余额接口需要一个 DeepSeek API Key。按以下顺序自动查找，**大多数情况第一条或第三条就能命中，无需配置**：
 
 1. 环境变量 `DEEPSEEK_API_KEY`
-2. 插件配置 `~/.zcode/whale/config.json` 的 `apiKey`
-3. **ZCode 客户端里已配置的 DeepSeek provider**（`baseURL` 指向 `api.deepseek.com` 的那一项）
+2. `~/.zcode/whale/config.json` 的 `apiKey`
+3. ZCode 客户端里已配置的、`baseURL` 指向 `api.deepseek.com` 的 provider
 
-写入方式（任选其一）：
+如果三者都没有（例如你的 provider 用的是中转站），余额会显示「未找到 DeepSeek API Key」。**这完全不影响方框**——方框的数字全部来自本地数据库。
+
+要配的话：
 
 ```bash
-node lib/cli.mjs key sk-xxxxxxxxxxxxxxxx     # 写进插件配置
+node lib/cli.mjs key sk-xxxx
 ```
 
-或让 ZCode 里的模型直接调 MCP 工具 `whale_config`（`action=set`, `apiKey=...`）。
-
-密钥只在本机内存中使用，只发往 `api.deepseek.com` / `platform.deepseek.com`，不写日志、不打印明文（对外只显示 `sk-04…994` 这样的掩码）。
-
-### 关掉不想要的自动化
-
-`~/.zcode/whale/config.json`：
-
-| 字段 | 默认 | 作用 |
-|---|---|---|
-| `autoStartWidget` | `true` | 会话启动时自动拉起挂件服务 |
-| `autoStartOverlay` | `true` | 会话启动时顺便拉起桌面浮层 |
-| `followIntervalMs` | `40` | 跟随探测间隔（毫秒），菜单里的选择会覆盖它 |
-| `port` | 自动（39321） | 固定端口，被占用时自动顺延 |
-
-改完重启会话生效。
-
----
-
-## 使用指南
-
-### 打开 ZCode 就自动出现
-
-插件自带 SessionStart hook，**每次会话启动都会幂等拉起**（已在跑就复用，不会重复开）。确认方法：
+### 常用命令
 
 ```bash
-cat ~/.zcode/whale/autostart.log      # 每次启动追加一行，如 server=started overlay=reused
-```
-
-> SessionStart 是在**会话启动**时触发的。正常情况下打开 ZCode 会恢复/创建会话，所以碰不到边界情况。
-
-### 命令行
-
-```bash
-node lib/cli.mjs status          # 余额 + 今日已用 + 挂件服务与桌面浮层状态
-node lib/cli.mjs turn            # 上一轮对话消耗（含逐档明细）
-node lib/cli.mjs start / stop    # 启停网页版挂件服务
-node lib/cli.mjs window start    # 启动桌面浮层（浮在 ZCode 界面上）
-node lib/cli.mjs window stop     # 关闭浮层
-node lib/cli.mjs window status   # 浮层与运行时状态
-node lib/cli.mjs desktop install # 安装 Electron 运行时（仅浮层需要，一次性）
-node lib/cli.mjs key sk-...      # 写入 API Key
+node lib/cli.mjs status           # 余额 + 今日已用 + 服务与浮层状态
+node lib/cli.mjs turn             # 上一轮对话消耗
+node lib/cli.mjs start / stop     # 启停服务
+node lib/cli.mjs window start     # 启动桌面浮层（浮在 ZCode 界面上）
+node lib/cli.mjs window stop      # 关闭浮层
+node lib/cli.mjs window status    # 浮层与运行时状态
+node lib/cli.mjs desktop install  # 安装 Electron 运行时（仅浮层需要，一次性）
+node lib/cli.mjs key sk-...       # 写入 API Key
 node lib/cli.mjs mode ledger|token  # 切换用量统计模式
-node lib/cli.mjs json            # 结构化输出，便于脚本消费
+node lib/cli.mjs json             # 结构化输出，便于脚本消费
 ```
 
 ### 在对话里直接用
@@ -217,81 +253,50 @@ node lib/cli.mjs json            # 结构化输出，便于脚本消费
 
 | MCP 工具 | 作用 |
 |---|---|
-| `whale_balance` | 余额、今日已用、当前峰谷时段 |
-| `whale_last_turn` | 上一轮消耗金额与逐档明细 |
-| `whale_widget` | `start` / `stop` / `status` / `url`，以及浮层的 `overlay_start` / `overlay_stop` / `overlay_status` |
-| `whale_config` | 查看或修改配置（API Key、用量模式、端口、自启、跟随间隔） |
+| `whale_balance` | 余额 + 今日已用 + 峰谷时段 |
+| `whale_last_turn` | 上一轮对话消耗 |
+| `whale_widget` | 启停服务与浮层、查状态 |
+| `whale_config` | 改 API Key、用量模式、自启、端口 |
 
-### 挂件菜单
+> 方框本身在会话里没有对应的 MCP 工具——它是常驻桌面面板，直接看即可。
 
-悬停鲸鱼 → 右上角出现三点按钮 → 点击打开菜单：
+### 方框自己的设置
 
-| 项 | 说明 |
+拖拽移动、贴边吸附自动保存。字号用 `Ctrl/Alt + 滚轮` 调整，双击刷新。这些存在浏览器 localStorage（键 `zcw-box-pos` / `zcw-box-view`）。
+
+### 自启
+
+`~/.zcode/whale/config.json`：
+
+| 字段 | 含义 |
 |---|---|
-| 大小 | 0.6–2.5×，滑块或数字（1–20） |
-| 音效 / 音量 | 小黄鸭或音效1；音量 0 即静音 |
-| 用量 | 小鲸鱼记账 / 实时·令牌 |
-| 峰谷 | 台词里峰谷文案的风格（默认 / 梁文峰谷 / !?强强?!） |
-| 气泡 | 是否允许自动弹出气泡 |
-| 每轮消耗提示 | 是否在每轮结束后弹消耗气泡；自动关闭秒数（0 = 手动关） |
-| 避让滚动条 | 让挂件右侧避开滚动条的像素宽度（默认关） |
-| 跟随延迟 | **仅浮层**：探测 ZCode 窗口位置的间隔，16–250ms |
+| `autoStartWidget` | 默认 `true`，会话启动时自动拉起服务 |
+| `autoStartOverlay` | 默认 `true`，会话启动时顺带拉起浮层（运行时没装则静默跳过） |
+| `port` | 固定端口，留空用默认 39321，占用时自动顺延 |
+| `followIntervalMs` | 跟随探测间隔（毫秒），默认 40 |
 
-### 浮层里的交互要点
-
-- 鲸鱼可以拖到窗口内任意位置，靠边会吸附，贴左缘时整体左右镜像。
-- **指针要先落在鲸鱼上，点击才会被浮层接管**——这是穿透设计的必然代价，好处是不会误触。
-- 菜单里的数字输入框建议用上下箭头或滑块，因为透明浮层窗口默认不抢键盘焦点。
+关掉自启就把对应字段设为 `false`。
 
 ---
 
-## 跟随延迟与性能
+## 数据来源
 
-浮层跟随靠一个常驻探测脚本（`desktop/follow-window.ps1`）读 ZCode 主窗口的位置、大小与前台状态。**默认 40ms 探测一次**，实测端到端跟随延迟约 **13ms**——拖窗口时鲸鱼基本是贴着走的。
-
-之所以能一边跑得勤、一边几乎不吃 CPU，是两点设计：
-
-- **探测循环编译成 C# 运行**（脚本内联 `Add-Type`），不是解释执行的 PowerShell 循环。同样 40ms 间隔，解释执行的循环体本身就吃掉约 3.4% 单核，编译后只剩 **0.16%**。
-- **贵的操作单独限频**：枚举进程（`GetProcessesByName`）用来定位窗口句柄与进程列表，按 3 秒预算刷新；每个探测周期只做几个微秒级的 Win32 调用，且**只有状态真的变化才输出**。
-
-实测对照：
-
-| 探测间隔 | 端到端跟随延迟 | 探测进程 CPU（单核占比） |
-|---|---|---|
-| 40ms（默认） | 13ms | 0.16%（稳态） |
-| 250ms | 135ms | 探测次数少 6 倍，只会更低 |
-
-也就是说间隔调小几乎没有性能代价。菜单里改即时生效，不用重启浮层。
+- **会话用量**：ZCode 的 `~/.zcode/cli/db/db.sqlite` 的 `model_usage` 表（**只读直连**；库被 WAL 模式占用但只读打开可用，无需复制）。
+- **每轮消耗**：同库的 `turn_usage` 表。
+- **当前会话**：`<dataBaseDir>/.zcode/v2/logs/*.log` 里的 `v4.session_data.acquire`。
+- **余额**：`https://api.deepseek.com/user/balance`。
 
 ---
 
-## 数据与计价口径
+## 开发
 
-### 今日已用
-
-- **小鲸鱼记账**：靠"观测到的余额下降"累计，服务未运行期间产生的消耗会漏记（从下次观测的新基准开始）。不需要额外令牌。
-- **实时·令牌**：需要 `DEEPSEEK_PLATFORM_TOKEN`（平台会话令牌，不是 API Key）。令牌会过期，过期后自动回落记账模式。
-
-### 每轮消耗
-
-按 ZCode 记录的 token 分档计价：**缓存命中**走「命中」价、**未命中输入**与**缓存写入**走「未命中」价、**输出与思考**走「输出」价，再按该轮所处时段选高峰或谷价。
-
-> **一个必须注意的口径**：ZCode 记录的 `input_tokens` 是**含缓存的总输入**（实测 `computed_total_tokens = input + output` 且 `input ≥ cache_read`）。计价前必须减掉命中部分，否则缓存那 99% 会被按未命中价重复计费——实测同一轮会从 ¥3.05 虚高到 ¥76.95（约 25 倍）。代码用 `lib/pricing.mjs` 的 `splitInputTokens()` 统一处理，并用总量字段自动识别 Anthropic 那种「input 不含缓存」的口径。`tools/selftest.mjs` 里有针对两种口径的回归断言。
-
-想核对每一分钱，用 `node lib/cli.mjs turn`，它会逐档列出：
-
-```
-上一轮对话消耗   ¥ 1.33
-模型             deepseek-flash
-计价时段         空闲（base 价目）
-缓存命中输入     22,637,312 tokens × ¥0.05/M = ¥1.1319
-未命中输入       12,049 tokens × ¥1.5/M = ¥0.0181
-输出             40,034 tokens × ¥4.5/M = ¥0.1802
+```bash
+node tools/selftest.mjs       # 端到端自检（临时 ZCODE_HOME，不碰真实数据，23 项断言）
+node tools/demo.mjs           # 演示：起假服务，6 秒加一次调用、30 秒切一次会话
+node tools/debug-overlay.mjs  # 浮层诊断（需 WHALE_DEBUG_PORT=9333 启动浮层）
 ```
 
-### 改价目
-
-DeepSeek 调价时改 `lib/pricing.mjs` 顶部的 `PEAK_HOURS` / `BASE_PRICE` / `PRO_PRICE`。`deepseek-v4-pro` 走 3 倍价，其余（含 `deepseek-flash`）走基础价。
+`tools/selftest.mjs` 覆盖了会话判定、分会话聚合、缓存不重复计费、输出不含 reasoning、峰谷分档、切换会话跟随、令牌关闭等。**改动计价或会话判定逻辑后必须跑一遍。**
 
 ---
 
@@ -299,118 +304,25 @@ DeepSeek 调价时改 `lib/pricing.mjs` 顶部的 `PEAK_HOURS` / `BASE_PRICE` / 
 
 | 现象 | 原因与处理 |
 |---|---|
-| 界面上看不到挂件 | ZCode 客户端不提供界面注入点，必须走桌面浮层：`desktop install` 装运行时，再 `window start` |
-| 打开 ZCode 没有自动出现 | 看 `~/.zcode/whale/autostart.log` 最后一行。没有新行说明 hook 没加载（插件未启用，或改完配置后没重启会话）；`overlay=skipped:no-runtime` 说明运行时没装；`overlay=failed:...` 看括号里的原因 |
-| 余额显示「未找到 DeepSeek API Key」 | 三条凭据来源都没命中。用 `key` 子命令写入，或在 ZCode 里加 DeepSeek provider |
-| 余额显示旧值并带 `stale` | 接口瞬时失败（网络/5xx），服务在回退缓存；4xx 不会回退，会直接报错 |
-| 今日已用一直是 0 | 记账模式只统计观测到的余额下降：还没产生消费，或消耗发生在服务未运行时。要精确数字改用 `mode token` |
-| 每轮消耗不弹窗 | 需要 ZCode 至少完成过一轮对话（`turn_usage` 有 `completed` 行）；另外菜单里「每轮消耗提示」必须开着 |
-| **每轮消耗金额离谱（虚高十几倍）** | 计价口径踩了「input 含缓存」的坑。核对 `splitInputTokens()` 是否被 `costOfUsage()` 使用，并跑 `node tools/selftest.mjs`；用 `cli.mjs turn` 看逐档明细即可判断 |
-| 鲸鱼不跟着 ZCode 走 | 探测脚本可能挂了：`window stop` 后 `window start` 重建。开 `WHALE_DEBUG_PORT` 启动会把判断依据写进 `~/.zcode/whale/overlay-debug.log` |
-| 跟得不跟手 / 想更省资源 | 菜单「跟随延迟」即时切换 16–250ms，或写 `config.json` 的 `followIntervalMs` |
-| 浮层里点不动鲸鱼 | 指针要先落在鲸鱼上（光标变 `grab`、右上角出现菜单按钮）；若整块区域都点不动，检查是否被其它置顶窗口压住 |
-| 浮层启动失败 | `cli.mjs window status` 看运行时是否已装 |
-| 峰谷判定不对 | 看 `lib/pricing.mjs` 的 `PEAK_HOURS` 等常量；工作日高峰为北京时间 9–12、14–18，2026-08-23 起周末全天谷价 |
-| 换了图片/音效不生效 | 资产路由每次读盘且 `no-store`，强刷即可；确认替换的是 `assets/` 下的同名文件 |
+| 界面上看不到方框 | 必须走桌面浮层：`desktop install` 装运行时，再 `window start` |
+| 打开 ZCode 没有自动出现 | 看 `~/.zcode/whale/autostart.log` 最后一行。没有新行说明 hook 没加载（插件未启用，或改完配置后没重启会话）；`overlay=skipped:no-runtime` 说明运行时没装 |
+| **切换会话后数字不变** | 查接口的 `sessionSource`：`db` 表示没读到日志事件、走了回退。检查客户端日志目录与 `v4.session_data.acquire` 行是否存在 |
+| 数字一直不更新 | 前端每 5 秒轮询。确认当前会话有新调用；失败时方框底部显示「取数失败，重试中…」 |
+| 余额显示「未找到 DeepSeek API Key」 | 三条凭据来源都没命中。用 `key` 子命令写入。与方框无关 |
+| 余额显示旧值并带 `stale` | 接口瞬时失败，服务在回退缓存。4xx 不会回退 |
+| 今日已用一直是 0 | 记账模式只统计观测到的余额下降：还没消费，或消耗发生在服务未运行时 |
+| **花费虚高十几倍** | 计价口径踩了「input 含缓存」，或把 reasoning 又加了一遍。核对 `lib/pricing-usd.mjs` 并跑 `node tools/selftest.mjs` |
+| 方框不跟着 ZCode 走 | 跟随由 `desktop/follow-window.ps1` 常驻探测；`window stop` 后 `window start` 重建 |
+| 浮层点不动方框 | 默认鼠标穿透，指针要先停在方框上。诊断：`WHALE_DEBUG_PORT=9333 node lib/cli.mjs window start` 后跑 `node tools/debug-overlay.mjs` |
+| 浮层启动失败 | `window status` 看运行时是否已装 |
+| **`window start` 报服务未就绪但服务在跑** | 服务身份名不一致：`lib/paths.mjs` 的 `APP_ID` 必须与健康接口返回的 `app` 相同 |
+| 改了源码不生效 | 插件跑的是缓存副本，见上文「重要：改代码后要同步到缓存」 |
+| 峰谷判定不对 | 方框看 `lib/pricing-usd.mjs`，余额/每轮看 `lib/pricing.mjs`；高峰为北京时间工作日 9–12、14–18 |
 
 ---
 
-## 自助排查工具
+## 卸载
 
-```bash
-node tools/selftest.mjs        # 计价口径回归 + 每轮消耗链路端到端自检（不碰真实数据）
-node tools/demo.mjs            # 用假数据起一个服务并周期性产生新轮次，用于观察消耗气泡
-node tools/debug-overlay.mjs   # 连进浮层页面（需以 WHALE_DEBUG_PORT 启动）排查渲染/交互
-```
-
----
-
-## 架构
-
-```
-zcode-whale-widget/
-├─ .zcode-plugin/plugin.json   插件清单：commands / skills / hooks / mcpServers
-├─ marketplace.json            本地市场声明，便于在客户端添加
-├─ hooks/hooks.json            SessionStart 自启
-├─ commands/whale.md           /whale 命令
-├─ skills/zcode-whale-widget/  使用与排查说明（供 ZCode 内的助手阅读）
-├─ desktop/                    桌面浮层
-│  ├─ main.cjs                 Electron 主进程：透明置顶窗口、穿透切换、视口转发
-│  ├─ preload.cjs              向页面暴露 setInteractive / onViewport / 跟随间隔
-│  └─ follow-window.ps1        常驻探测 ZCode 窗口位置与前台状态（C# 内核）
-├─ lib/
-│  ├─ server.mjs               本地 HTTP 服务：页面、图片、音效、全部 JSON 接口
-│  ├─ widget.js                前端挂件：拖拽/吸附/翻转/菜单/气泡/音效/穿透
-│  ├─ balance.mjs              余额、记账账本、平台用量、缓存与回退
-│  ├─ turn-cost.mjs            每轮消耗（读 turn_usage，回退模型 I/O 日志）
-│  ├─ pricing.mjs              峰谷时段判定 + token→金额（含输入口径拆分）
-│  ├─ credentials.mjs          凭据发现 + 出站主机白名单校验
-│  ├─ service.mjs              挂件服务的发现/拉起/关闭
-│  ├─ overlay.mjs              浮层的启停与 Electron 运行时按需安装
-│  ├─ autostart.mjs            SessionStart 自启入口
-│  ├─ cli.mjs                  命令行入口
-│  └─ mcp-server.mjs           MCP 工具
-├─ tools/                      自检、演示与排查脚本
-└─ assets/                     鲸鱼形象、rua 动图、两套音效（来自上游）
-```
-
-### 运行时数据
-
-都在 `~/.zcode/whale/`，与仓库完全分离：
-
-| 文件 | 内容 |
-|---|---|
-| `config.json` | API Key、平台令牌、端口、自启开关、跟随间隔 |
-| `widget-state.json` | 挂件外观与菜单开关（大小、音效、气泡…） |
-| `usage-ledger.json` | 记账模式的账本（含最近 30 天归档） |
-| `server.json` | 挂件服务运行信息（pid / 端口 / 关闭令牌） |
-| `overlay.json` | 浮层进程 pid |
-| `autostart.log` | 每次会话启动的自启结果 |
-| `desktop-runtime/` | Electron 运行时（约 370MB，删掉即回收，浮层随之失效） |
-
-服务接口（排查时可直接 curl）：`/whale/health`、`/whale/balance.json`、`/whale/last-turn.json`、`/whale/size.json`（GET/PUT）、`/whale/image.png`、`/whale/rua.gif`、`/whale/sound/press.mp3?set=duck|fx1`、`/whale/widget.js`。
-
----
-
-## 安全说明
-
-- **出站白名单**：只向 `api.deepseek.com`、`platform.deepseek.com` 发请求；发请求前校验协议、主机名，拒绝环回/私有/保留地址的字面量 IP。要扩展目标需改 `lib/credentials.mjs` 的 `ALLOWED_HOSTS`。
-- **本地服务**：只监听 `127.0.0.1`；校验 `Host` 头防 DNS rebinding；写操作校验 `Origin` 防跨站伪造；停止服务需要 `server.json` 里的随机令牌；不返回通配 CORS 头。
-- **浮层**：只加载本机 `127.0.0.1` 的页面，运行在 `contextIsolation` 下，仅通过 preload 暴露 `setInteractive` / `setViewport` / `quit` / 跟随间隔几个能力，页面没有 Node 权限。
-- **凭据**：API Key 只在内存中使用，不落日志、不打印明文。
-- 排查用的远程调试端口默认关闭，只有显式设置 `WHALE_DEBUG_PORT` 才打开。
-
----
-
-## 已知限制
-
-- 浮层仅支持 **Windows**（依赖 Win32 窗口 API 与 PowerShell）；网页版跨平台。
-- 浮层跟随靠轮询，拖动时理论上存在约一个探测间隔的滞后（默认 40ms，实测 13ms，肉眼几乎看不出）。
-- 浮层里**吸附没有滑动动画**（位置直接就位）。这是为了避开透明窗口的合成层错位——详见下面「踩坑记录」；网页版动画完整。
-- 浮层穿透的必然代价：点击某个位置前，指针得先落在鲸鱼上。
-- 菜单里的数字输入框在浮层里建议用箭头/滑块，因为透明浮层窗口默认不抢键盘焦点。
-- 菜单默认弹在鲸鱼头顶；鲸鱼被拖到窗口顶部、上方放不下时会翻到按钮下方（两种模式都一样）。
-- 每轮消耗只统计 ZCode 自己记录的主对话轮次；ZCode 之外调用的 API 不计入。
-
-### 踩坑记录（写给后来改这份代码的人）
-
-1. **透明窗口不能靠 `setBounds` 贴合别的窗口**。一改尺寸/位置，Windows 合成层不重排，页面内容会被画到偏离窗口的地方（实测页面 `(0,0)` 的方块跑到窗口外）。现在的做法是窗口恒定铺满工作区，把 ZCode 窗口矩形作为「视口」发给页面。
-2. **浮层模式下必须禁用定位 CSS 过渡**（`.zcwv-root.zcwv-overlay{transition:none}`）。对 `left/top` 做过渡同样会触发合成层错位。
-3. **不要给浮层设 owner 窗口关系**。系统会在 Electron 背后直接显示/隐藏窗口，`BrowserWindow.isVisible()` 与实际状态脱节，恢复后不再显示。
-4. **`resizable:false` 会锁死窗口尺寸**（Electron 把 min/max 设成创建时大小），之后任何改尺寸的调用都被拒。
-5. **位置记忆必须在拿到真实坐标系之后再恢复**，否则会按屏幕尺寸算出错误锚点。
-6. **`desktop/follow-window.ps1` 必须保持纯 ASCII**。Windows PowerShell 5.1 按系统 ANSI 代码页读取无 BOM 的 `.ps1`，中文注释会被解码成破坏语法的字节，脚本直接退出、跟随失效。
-7. **`$ErrorActionPreference='SilentlyContinue'` 会吞掉 `Add-Type` 的编译错误**，表现成"脚本秒退、浮层跟着退出"。该脚本已改为显式输出编译/运行错误。
-8. **C# 内联代码只能用 .NET Framework 的 API**（PS 5.1 的编译目标），例如 `Environment.TickCount64` 不存在，要用 `TickCount`。
-9. **浮层里有两套坐标系，不能混用**。`viewport()` 返回的是 ZCode 窗口矩形（鲸鱼的位置、吸附、居中都按它算），而 `position:fixed` 的元素（挂在 `body` 上的挂件菜单）参照的是页面自身视口，也就是铺满整个工作区的浮层窗口。窗口化 ZCode 时两者差着几百像素，拿 `viewport()` 去算 `position:fixed` 的偏移会把菜单整个甩到屏幕外（实测菜单被算到 x=2812，而浮层只有 2560 宽）。这类 fixed 元素一律用 `pageViewport()`。
-10. **挂在 `body` 上的 fixed 元素不会跟着 root 走**。浮层里 ZCode 窗口一移动，鲸鱼跟着动、菜单留在原地，所以 `settle()` 里每次都带一次 `positionMenu()`。
-
----
-
-## 许可与致谢
-
-本仓库以 **MIT** 许可发布，见 [`LICENSE`](./LICENSE)。
-
-鲸鱼形象、rua 动图、音效，以及挂件的整体视觉与交互设计来自
-**[MeteorNOX/DeepSeek-Balance-Whale-Widget](https://github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget)**（Copyright (c) 2026 MeteorNOX，MIT）。
-本项目是它在 ZCode 上的移植版，沿用与新增的部分逐条列在 [`NOTICE`](./NOTICE) 里。如果喜欢这只鲸鱼，请去给上游点个 star。
+1. 在插件管理里禁用/卸载 `zcode-whale-widget`
+2. 删掉数据目录 `~/.zcode/whale/`（配置、账本、桌面运行时都在里面）
+3. 如需彻底清理，删掉 clone 目录与 `~/.zcode/cli/plugins/cache/zcode-whale-local/`

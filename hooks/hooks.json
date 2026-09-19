@@ -1,5 +1,5 @@
 {
-  "description": "ZCode 鲸鱼挂件：会话启动时幂等拉起本地挂件服务（对应上游「每次打开界面自动启用」）。可在 ~/.zcode/whale/config.json 里把 autoStartWidget 设为 false 关闭自启。",
+  "description": "ZCode 会话用量方框：会话启动时幂等拉起本地服务，以及已装 Electron 运行时的桌面浮层（对应上游「每次打开界面自动启用」）。可在 ~/.zcode/whale/config.json 里把 autoStartWidget / autoStartOverlay 设为 false 关闭自启。",
   "hooks": {
     "SessionStart": [
       {

@@ -1,12 +1,12 @@
 {
   "name": "zcode-whale-local",
   "version": 1,
-  "description": "Local marketplace for the ZCode DeepSeek balance whale widget.",
+  "description": "Local marketplace for the ZCode session usage box.",
   "plugins": [
     {
       "name": "zcode-whale-widget",
       "version": "1.0.0",
-      "description": "ZCode 版 DeepSeek 余额小鲸鱼挂件：余额、今日已用、峰谷定价与每轮对话消耗。",
+      "description": "ZCode 会话用量方框：当前会话的累计 token（命中/未命中/输出）、累计花费与已用上下文，浮在 ZCode 界面上并跟随会话切换。附带 DeepSeek 余额与每轮消耗查询。",
       "source": "."
     }
   ]

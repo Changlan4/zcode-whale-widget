@@ -1,12 +1,12 @@
-// ZCode 鲸鱼挂件的桌面浮层窗口。
+// 会话用量方框的桌面浮层窗口。
 //
-// ZCode 插件无法往客户端界面注入内容，所以这里用独立 Electron 窗口把挂件页面
+// ZCode 插件无法往客户端界面注入内容，所以这里用独立 Electron 窗口把方框
 // 「浮」在 ZCode 上。为了让它表现得像界面的一部分：
 //   - 窗口矩形始终对齐 ZCode 主窗口（由 desktop/follow-window.ps1 常驻探测位置）
 //   - 通过 owner 关系让系统处理联动：ZCode 最小化 → 浮层跟着隐藏；
 //     ZCode 退出 → 浮层跟着销毁
 //   - 透明、无边框、不进任务栏、始终置顶
-//   - **默认鼠标穿透**：不在鲸鱼/气泡/菜单上时点击落到下面的 ZCode，不挡操作
+//   - **默认鼠标穿透**：不在方框上时点击落到下面的 ZCode，不挡操作
 //
 // 非 Windows 平台拿不到窗口信息，退回「覆盖整个工作区」的静态浮层。
 const { app, BrowserWindow, ipcMain, screen } = require('electron')
@@ -77,7 +77,7 @@ function createWindow() {
     hasShadow: false,
     show: false,
     alwaysOnTop: true,
-    title: 'DeepSeek 余额小鲸鱼',
+    title: '会话用量',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,

@@ -1,9 +1,8 @@
-// 浮层诊断：通过 CDP 连进浮层页面，看它到底收到了什么鼠标事件、
-// 菜单能否被打开。用于排查「点不动鲸鱼」这类问题。
+// 浮层诊断：通过 CDP 连进浮层页面，看方框的定位、鼠标接管与数据渲染是否正常。
+// 用于排查「点不动方框」「数字不更新」「位置跑偏」这类问题。
 //
 //   WHALE_DEBUG_PORT=9333 node lib/cli.mjs window start
 //   node tools/debug-overlay.mjs            # 默认连 9333
-import { readFileSync } from 'node:fs'
 import http from 'node:http'
 
 const PORT = Number(process.argv[2]) || 9333
@@ -63,43 +62,46 @@ await new Promise((r) => ws.addEventListener('open', r, { once: true }))
 
 async function evaluate(expression) {
   const r = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })
-  if (r.exceptionDetails) throw new Error(r.exceptionDetails.text + ' ' + JSON.stringify(r.exceptionDetails.exception || {}))
+  if (r.exceptionDetails) {
+    throw new Error(r.exceptionDetails.text + ' ' + JSON.stringify(r.exceptionDetails.exception || {}))
+  }
   return r.result.value
 }
 
-// 1. 环境与状态
+// 1. 环境与方框几何
 console.log(
-  '\n[1] 环境\n' +
+  '\n[1] 环境与方框几何\n' +
     JSON.stringify(
-      await evaluate(`({
-        hasBridge: !!window.whaleDesktop,
-        overlayFlag: window.whaleDesktop ? window.whaleDesktop.isOverlay : null,
-        dpr: window.devicePixelRatio,
-        viewport: [innerWidth, innerHeight],
-        rootClass: document.querySelector('.zcwv-root').className,
-        menuOpen: document.querySelector('.zcwv-menu').classList.contains('zcwv-menu-open'),
-        menuBtnVisible: document.querySelector('.zcwv-menu-btn').classList.contains('zcwv-menu-btn-visible'),
-        btnRect: (function(){var b=document.querySelector('.zcwv-menu-btn').getBoundingClientRect();return {x:b.x,y:b.y,w:b.width,h:b.height}})(),
-        imgRect: (function(){var b=document.querySelector('.zcwv-img').getBoundingClientRect();return {x:b.x,y:b.y,w:b.width,h:b.height}})(),
-        rootRect: (function(){var b=document.querySelector('.zcwv-root').getBoundingClientRect();return {x:b.x,y:b.y,w:b.width,h:b.height}})(),
-      })`),
+      await evaluate(`(function(){
+        var box = document.getElementById('box');
+        var b = box ? box.getBoundingClientRect() : null;
+        return {
+          hasBridge: !!window.whaleDesktop,
+          overlayFlag: window.whaleDesktop ? window.whaleDesktop.isOverlay : null,
+          dpr: window.devicePixelRatio,
+          pageViewport: [innerWidth, innerHeight],
+          boxExists: !!box,
+          boxRect: b ? { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) } : null,
+          boxClass: box ? box.className : null,
+        };
+      })()`),
       null,
       1
     )
 )
 
-// 1b. 页面实际加载到的 widget.js 是新版还是旧版
+// 1b. 页面加载到的 box.js 是否正确（避免缓存/旧副本）
 console.log(
-  '\n[1b] 页面加载的 widget.js\n' +
+  '\n[1b] 页面加载的 box.js\n' +
     JSON.stringify(
       await evaluate(`
-        fetch('/whale/widget.js', { cache: 'no-store' })
+        fetch('/whale/box.js', { cache: 'no-store' })
           .then(function (r) { return r.text() })
           .then(function (t) {
             return {
               length: t.length,
-              hasNewLogic: t.indexOf('pointerInMenuBtnRect') !== -1,
-              hasSyncOverlay: t.indexOf('syncOverlayInteractive') !== -1,
+              hasPoll: t.indexOf('session-usage.json') !== -1,
+              hasOverlayLogic: t.indexOf('setInteractive') !== -1,
             }
           })
       `),
@@ -108,113 +110,131 @@ console.log(
     )
 )
 
-// 2. 注入事件记录器，随后用真实鼠标在页面外移动，看页面能收到哪些事件
-await evaluate(`
-  window.__dbg = { move: [], down: [], click: [], ipc: [] };
-  document.addEventListener('pointermove', function(e){ if(window.__dbg.move.length<40) window.__dbg.move.push([Math.round(e.clientX),Math.round(e.clientY)]) }, true);
-  document.addEventListener('pointerdown', function(e){ window.__dbg.down.push([Math.round(e.clientX),Math.round(e.clientY)]) }, true);
-  document.addEventListener('click', function(e){ window.__dbg.click.push([Math.round(e.clientX),Math.round(e.clientY)]) }, true);
-  if (window.whaleDesktop && window.whaleDesktop.setInteractive) {
-    var orig = window.whaleDesktop.setInteractive;
-    window.whaleDesktop.setInteractive = function(v){ window.__dbg.ipc.push(!!v); return orig.call(window.whaleDesktop, v) };
-  }
-  'installed'
-`)
-console.log('[2] 已注入事件记录器（pointermove/pointerdown/click + setInteractive 调用）')
-await send('Runtime.enable')
-
-// 2b. 定点测试：把指针派发到鲸鱼中心，看是否触发 setInteractive
-console.log('\n[2b] 把指针派发到鲸鱼中心，检查是否触发 setInteractive')
-await evaluate('window.__dbg.ipc.length = 0; 1')
-const img = await evaluate(
-  `(function(){var b=document.querySelector('.zcwv-img').getBoundingClientRect();return {x:Math.round(b.x+b.width/2),y:Math.round(b.y+b.height/2)}})()`
-)
-await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: img.x, y: img.y })
-await new Promise((r) => setTimeout(r, 300))
+// 1c. 接口数据与页面显示是否一致
 console.log(
-  '  鲸鱼中心 ' +
-    JSON.stringify(img) +
-    ' -> ' +
+  '\n[1c] 接口数据\n' +
     JSON.stringify(
-      await evaluate(`({
-        ipc: window.__dbg.ipc,
-        cursor: document.body.style.cursor,
-        menuBtnVisible: document.querySelector('.zcwv-menu-btn').classList.contains('zcwv-menu-btn-visible')
-      })`)
-    )
-)
-
-// 2c. 再派发到按钮矩形（该处鲸鱼图片是透明的，正是之前点不到的坑）
-await evaluate('window.__dbg.ipc.length = 0; 1')
-const btnPt = await evaluate(
-  `(function(){var b=document.querySelector('.zcwv-menu-btn').getBoundingClientRect();return {x:Math.round(b.x+b.width/2),y:Math.round(b.y+b.height/2)}})()`
-)
-await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: btnPt.x, y: btnPt.y })
-await new Promise((r) => setTimeout(r, 300))
-console.log(
-  '  按钮矩形 ' +
-    JSON.stringify(btnPt) +
-    ' -> ' +
-    JSON.stringify(
-      await evaluate(`({
-        ipc: window.__dbg.ipc,
-        menuBtnVisible: document.querySelector('.zcwv-menu-btn').classList.contains('zcwv-menu-btn-visible')
-      })`)
-    )
-)
-
-// 2d. 移开（屏幕中部），确认会恢复穿透
-await evaluate('window.__dbg.ipc.length = 0; 1')
-await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1280, y: 400 })
-await new Promise((r) => setTimeout(r, 300))
-console.log(
-  '  移开到屏幕中部 -> ' + JSON.stringify(await evaluate('window.__dbg.ipc'))
-)
-
-// 3. 用 CDP 直接向页面派发真实点击（走 Chromium 输入管线），验证页面逻辑
-const btn = await evaluate(
-  `(function(){var b=document.querySelector('.zcwv-menu-btn').getBoundingClientRect();return {x:Math.round(b.x+b.width/2),y:Math.round(b.y+b.height/2)}})()`
-)
-console.log('[3] 用 CDP 点击菜单按钮中心 ' + JSON.stringify(btn))
-for (const [type, extra] of [
-  ['mouseMoved', {}],
-  ['mousePressed', { button: 'left', clickCount: 1, buttons: 1 }],
-  ['mouseReleased', { button: 'left', clickCount: 1, buttons: 0 }],
-]) {
-  await send('Input.dispatchMouseEvent', { type, x: btn.x, y: btn.y, ...extra })
-  await new Promise((r) => setTimeout(r, 80))
-}
-await new Promise((r) => setTimeout(r, 400))
-console.log(
-  '[3] 点击后菜单状态: ' +
-    JSON.stringify(
-      await evaluate(`({
-        menuOpen: document.querySelector('.zcwv-menu').classList.contains('zcwv-menu-open'),
-        down: window.__dbg.down,
-        click: window.__dbg.click,
-        ipc: window.__dbg.ipc
-      })`)
-    )
-)
-
-// 4. 关闭菜单，给真实鼠标留出观察窗口
-console.log('\n[4] 接下来 8 秒会把鼠标记录暴露出来 —— 请在屏幕上把鼠标移到右下角鲸鱼身上再移开。')
-await new Promise((r) => setTimeout(r, 8000))
-console.log(
-  '[4] 页面收到的事件：\n' +
-    JSON.stringify(
-      await evaluate(`({
-        moveCount: window.__dbg.move.length,
-        firstMoves: window.__dbg.move.slice(0, 5),
-        lastMoves: window.__dbg.move.slice(-5),
-        down: window.__dbg.down,
-        click: window.__dbg.click,
-        ipc: window.__dbg.ipc
-      })`),
+      await evaluate(`
+        fetch('/whale/session-usage.json', { cache: 'no-store' })
+          .then(function (r) { return r.json() })
+          .then(function (d) { return {
+            ok: d.ok, sessionSource: d.sessionSource, title: d.title,
+            tokens: d.tokens, cost: d.cost, context: d.context
+          } })
+      `),
       null,
       1
     )
 )
+console.log(
+  '[1c] 页面显示的文本\n' +
+    JSON.stringify(
+      await evaluate(`(function(){
+        var rows = [].slice.call(document.querySelectorAll('#box .row'));
+        return {
+          title: (document.querySelector('#box .title') || {}).textContent,
+          rows: rows.map(function(r){ return {
+            key: r.getAttribute('data-key'),
+            tok: r.querySelector('.tok').textContent,
+            cost: r.querySelector('.cost').textContent
+          } }),
+          ctx: (document.querySelector('#box .ctxval') || {}).textContent,
+          ctxBarWidth: (document.querySelector('#box .ctxbar i') || {}).style ? document.querySelector('#box .ctxbar i').style.width : null,
+          foot: (document.querySelector('#box .foot') || {}).textContent
+        };
+      })()`),
+      null,
+      1
+    )
+)
+
+// 2. 鼠标接管判定
+// 注意：preload 用 contextBridge 暴露的对象是**冻结**的（writable:false），
+// 没法在这里包一层记录 setInteractive 调用。所以改为两件事：
+//   a. 直接验证页面自己的判定函数（elementFromPoint 是否命中方框）
+//   b. 读主进程的 overlay-debug.log —— 那里记录了每次 interactive 切换，最权威
+await evaluate(`
+  window.__dbg = { move: [], click: [] };
+  document.addEventListener('pointermove', function(e){ if(window.__dbg.move.length<40) window.__dbg.move.push([Math.round(e.clientX),Math.round(e.clientY)]) }, true);
+  document.addEventListener('click', function(e){ window.__dbg.click.push([Math.round(e.clientX),Math.round(e.clientY)]) }, true);
+  'installed'
+`)
+console.log('\n[2] 已注入事件记录器（pointermove/click）')
+await send('Runtime.enable')
+
+console.log(
+  '  bridge 是否可写: ' +
+    JSON.stringify(
+      await evaluate(`(function(){
+        var d = Object.getOwnPropertyDescriptor(window.whaleDesktop, 'setInteractive');
+        return { writable: d ? d.writable : null, frozen: Object.isFrozen(window.whaleDesktop) };
+      })()`)
+    ) +
+    '（冻结属正常，无法在此拦截调用）'
+)
+
+// 2b. 方框内 / 方框外的命中判定（页面据此决定是否接管鼠标）
+console.log(
+  '  命中判定: ' +
+    JSON.stringify(
+      await evaluate(`(function(){
+        var box = document.getElementById('box');
+        var b = box.getBoundingClientRect();
+        var c = document.elementFromPoint(Math.round(b.x + b.width/2), Math.round(b.y + b.height/2));
+        var o = document.elementFromPoint(5, 5);
+        function inBox(el){ return !!(el && (el === box || box.contains(el))) }
+        return {
+          centerEl: c ? (c.id || c.className || c.tagName) : null,
+          centerInBox: inBox(c),
+          cornerEl: o ? (o.id || o.className || o.tagName) : null,
+          cornerInBox: inBox(o),
+        };
+      })()`),
+      null,
+      1
+    )
+)
+
+// 2c. 把指针派发到方框中心，再移开
+const center = await evaluate(
+  `(function(){var b=document.getElementById('box').getBoundingClientRect();return {x:Math.round(b.x+b.width/2),y:Math.round(b.y+b.height/2)}})()`
+)
+await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: center.x, y: center.y })
+await new Promise((r) => setTimeout(r, 300))
+console.log('  指针移到方框中心 ' + JSON.stringify(center) + '，页面收到 mousemove: ' + JSON.stringify(await evaluate('window.__dbg.move.slice(-2)')))
+console.log(
+  '  → 主进程应记录 ipc-interactive true。核对命令：\n' +
+    '    grep interactive "$HOME/.zcode/whale/overlay-debug.log" | tail -4'
+)
+
+// 3. 拖动：模拟一次按住拖到别处，看位置是否更新并落盘
+const before = await evaluate(
+  `(function(){var b=document.getElementById('box').getBoundingClientRect();return {x:Math.round(b.x),y:Math.round(b.y)}})()`
+)
+console.log('\n[3] 拖动测试（起点 ' + JSON.stringify(before) + '）')
+await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: center.x, y: center.y })
+await send('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, buttons: 1, x: center.x, y: center.y })
+await new Promise((r) => setTimeout(r, 120))
+await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: center.x + 60, y: center.y + 40, buttons: 1 })
+await new Promise((r) => setTimeout(r, 120))
+await send('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, buttons: 0, x: center.x + 60, y: center.y + 40 })
+await new Promise((r) => setTimeout(r, 300))
+const after = await evaluate(
+  `(function(){var b=document.getElementById('box').getBoundingClientRect();return {x:Math.round(b.x),y:Math.round(b.y)}})()`
+)
+console.log('  拖动后 ' + JSON.stringify(after) + '（应各偏移约 +60 / +40）')
+console.log(
+  '  已保存的位置: ' + JSON.stringify(await evaluate(`localStorage.getItem('zcw-box-pos')`))
+)
+
+// 4. 数据是否随时间更新（等两次轮询）
+console.log('\n[4] 等待 12 秒观察数字是否刷新（每 5 秒一次轮询）')
+const snap1 = await evaluate(`document.querySelector('#box .foot').textContent`)
+await new Promise((r) => setTimeout(r, 12000))
+const snap2 = await evaluate(`document.querySelector('#box .foot').textContent`)
+console.log('  首次: ' + snap1)
+console.log('  之后: ' + snap2)
+console.log('  ' + (snap1 === snap2 ? '（未变化：当前会话这段时间没有新调用，属正常）' : '（已刷新）'))
 
 ws.close()
 process.exit(0)
