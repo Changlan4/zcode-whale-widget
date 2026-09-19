@@ -162,10 +162,12 @@ ZCode 插件拿不到客户端 UI 事件。唯一能反映「用户正在看哪�
 1. 把仓库克隆到本地（例如 `E:\AI\ZCode\.zcode\plugins\zcode-whale-widget`）：
 
    ```bash
-   git clone https://github.com/nb10yyds/zcode-whale-widget.git ~/.zcode/plugins/zcode-whale-widget
+   git clone https://github.com/Changlan4/zcode-whale-widget.git ~/.zcode/plugins/zcode-whale-widget
    ```
 
    后面的命令都假设你在仓库根目录下执行。
+
+   > 这是**私人仓库**：需要 GitHub 账号 `Changlan4` 的访问权限，未登录时 `git clone` 会要求认证。上游（本项目的鲸鱼版前身）是 [MeteorNOX/DeepSeek-Balance-Whale-Widget](https://github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget)，不要从那里 clone——那是改造前的旧版本。
 
 2. **注册为本地插件市场**，二选一：
 
