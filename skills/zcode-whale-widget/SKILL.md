@@ -12,7 +12,7 @@ description: 操作与排查 ZCode 会话用量方框（原 DeepSeek 余额小�
 | 组件 | 文件 | 职责 |
 |---|---|---|
 | 本地服务 | `lib/server.mjs` | 本地 HTTP 服务（默认 `127.0.0.1:39321`），提供方框页面与 JSON 接口 |
-| 方框前端 | `lib/box.js` + `lib/box-css.mjs` | 拖拽、吸附、位置记忆、浮层鼠标穿透切换、5 秒轮询取数 |
+| 方框前端 | `lib/box.js` + `lib/box-css.mjs` | 位置与字号记忆、浮层鼠标穿透切换、5 秒轮询取数 |
 | 会话用量 | `lib/session-usage.mjs` | 定「当前会话」（读客户端日志）+ 聚合数据库 + 组装快照 |
 | 计价 | `lib/pricing-usd.mjs` | 美元峰谷单价与 token→金额换算（方框改价目只改这里） |
 | 桌面浮层 | `desktop/main.cjs`、`desktop/preload.cjs` | 透明置顶无边框窗口承载方框，默认鼠标穿透，只加载本机 127.0.0.1 |
@@ -104,7 +104,7 @@ node "${ZCODE_PLUGIN_ROOT}/lib/cli.mjs" window stop     # 关闭浮层
 node "${ZCODE_PLUGIN_ROOT}/lib/cli.mjs" desktop install # 安装 Electron 运行时（浮层前置，一次性）
 ```
 
-服务接口（排查时可直接 curl）：`/whale/health`、`/whale/session-usage.json`、`/whale/box.js`、`/whale/balance.json`、`/whale/last-turn.json`、`/whale/size.json`（GET/PUT）。
+服务接口（排查时可直接 curl）：`/whale/health`、`/whale/session-usage.json`、`/whale/box.js`。
 
 ## 配置字段（`~/.zcode/whale/config.json`）
 
@@ -133,7 +133,7 @@ node "${ZCODE_PLUGIN_ROOT}/lib/cli.mjs" desktop install # 安装 Electron 运行
 | **方框不跟着 ZCode 走** | 跟随由 `desktop/follow-window.ps1` 常驻探测（默认每 40ms 读一次 ZCode 主窗口矩形与前台状态）。完全不动时先确认该 PowerShell 子进程是否还活着（`window stop` 后 `window start` 重建）；诊断信息写进 `~/.zcode/whale/overlay-debug.log`（仅在 `WHALE_DEBUG_PORT` 开启时记录） |
 | 探测脚本秒退 / 浮层跟着消失 | 多为 `follow-window.ps1` 里的 C# 编译失败或脚本被写成非 ASCII。`overlay-debug.log` 里搜 `csharp-compile-failed` / `follow-loop-error`；**该文件必须保持纯 ASCII**（PS 5.1 按 ANSI 代码页读） |
 | 方框位置错乱 / 跑到窗口外 | 透明窗口的合成层错位，通常是有人重新打开了定位过渡或改回 `setBounds` 贴窗口。见 README「与上游的差异」里的两条踩坑记录 |
-| **浮层起来了但点不动方框** | 浮层默认鼠标穿透，指针必须先停在方框上才能点（光标变 `grab`）。若整块区域都点不动，检查是否被其它置顶窗口压住。诊断：`WHALE_DEBUG_PORT=9333 node lib/cli.mjs window start` 后跑 `node tools/debug-overlay.mjs`，并 `grep interactive ~/.zcode/whale/overlay-debug.log` |
+| **浮层起来了但点不动方框** | 浮层默认鼠标穿透，指针必须先停在方框上才能点。若整块区域都点不动，检查是否被其它置顶窗口压住。诊断：`WHALE_DEBUG_PORT=9333 node lib/cli.mjs window start` 后跑 `node tools/debug-overlay.mjs`，并 `grep interactive ~/.zcode/whale/overlay-debug.log` |
 | 浮层启动失败 | `node lib/cli.mjs window status` 看运行时是否已安装；未安装则 `desktop install`。Electron 约 150MB（解压后约 380MB），装到 `~/.zcode/whale/desktop-runtime` |
 | **`window start` 报「服务未就绪」但服务明明在跑** | 服务身份名不一致：`lib/paths.mjs` 的 `APP_ID` 必须与 `server.mjs` 健康接口返回的 `app` 完全一致（`service.mjs` 的 `probeHealth` 按它校验）。历史上 server 与 service 各写一份名字字面量，导致服务起得来但探活永远失败 |
 | **改了源码不生效** | 插件实际加载的是**缓存副本** `~/.zcode/cli/plugins/cache/zcode-whale-local/zcode-whale-widget/<版本>/`，改 clone 里的代码后必须把改动同步过去（或重装插件）。浮层的 Electron 入口也在这个缓存目录下的 `desktop/` |

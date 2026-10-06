@@ -1,22 +1,22 @@
 {
   "name": "zcode-whale-widget",
   "version": "1.0.0",
-  "description": "ZCode 版 DeepSeek 余额小鲸鱼挂件：常驻网页挂件显示余额与今日已用，支持峰谷定价、每轮对话消耗统计、随机台词、音效与拖拽吸附。移植自 MeteorNOX 的 DSH 版 dsh-whale-widget。",
+  "description": "ZCode 会话用量方框：显示当前会话自新建以来的累计用量——token 三分（缓存命中 / 未命中 / 输出）、累计花费与已用上下文，浮在 ZCode 界面之上并跟随会话切换。附带 DeepSeek 余额与每轮对话消耗查询。",
   "description_i18n": {
-    "en": "DeepSeek balance whale widget for ZCode: a persistent browser widget showing balance and today's usage, with peak/off-peak pricing, per-turn cost, quotes, sound effects, and drag-to-snap. Ported from MeteorNOX's DSH plugin dsh-whale-widget.",
-    "zh-CN": "ZCode 版 DeepSeek 余额小鲸鱼挂件：常驻网页挂件显示余额与今日已用，支持峰谷定价、每轮对话消耗统计、随机台词、音效与拖拽吸附。移植自 MeteorNOX 的 DSH 版 dsh-whale-widget。"
+    "en": "Session usage box for ZCode: cumulative tokens (cache hit / miss / output), cost and context usage for the current session, floating above the ZCode UI and following session switches. Also exposes DeepSeek balance and per-turn cost queries.",
+    "zh-CN": "ZCode 会话用量方框：显示当前会话自新建以来的累计用量——token 三分（缓存命中 / 未命中 / 输出）、累计花费与已用上下文，浮在 ZCode 界面之上并跟随会话切换。附带 DeepSeek 余额与每轮对话消耗查询。"
   },
   "author": {
     "name": "Ported from MeteorNOX/DeepSeek-Balance-Whale-Widget"
   },
   "license": "MIT",
   "keywords": [
-    "deepseek",
-    "balance",
-    "widget",
-    "whale",
+    "session",
     "usage",
-    "pricing"
+    "tokens",
+    "cost",
+    "context",
+    "overlay"
   ],
   "commands": "commands",
   "skills": "skills",

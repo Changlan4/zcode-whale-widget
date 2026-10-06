@@ -207,27 +207,7 @@ console.log(
     '    grep interactive "$HOME/.zcode/whale/overlay-debug.log" | tail -4'
 )
 
-// 3. 拖动：模拟一次按住拖到别处，看位置是否更新并落盘
-const before = await evaluate(
-  `(function(){var b=document.getElementById('box').getBoundingClientRect();return {x:Math.round(b.x),y:Math.round(b.y)}})()`
-)
-console.log('\n[3] 拖动测试（起点 ' + JSON.stringify(before) + '）')
-await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: center.x, y: center.y })
-await send('Input.dispatchMouseEvent', { type: 'mousePressed', button: 'left', clickCount: 1, buttons: 1, x: center.x, y: center.y })
-await new Promise((r) => setTimeout(r, 120))
-await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: center.x + 60, y: center.y + 40, buttons: 1 })
-await new Promise((r) => setTimeout(r, 120))
-await send('Input.dispatchMouseEvent', { type: 'mouseReleased', button: 'left', clickCount: 1, buttons: 0, x: center.x + 60, y: center.y + 40 })
-await new Promise((r) => setTimeout(r, 300))
-const after = await evaluate(
-  `(function(){var b=document.getElementById('box').getBoundingClientRect();return {x:Math.round(b.x),y:Math.round(b.y)}})()`
-)
-console.log('  拖动后 ' + JSON.stringify(after) + '（应各偏移约 +60 / +40）')
-console.log(
-  '  已保存的位置: ' + JSON.stringify(await evaluate(`localStorage.getItem('zcw-box-pos')`))
-)
-
-// 4. 数据是否随时间更新（等两次轮询）
+// 3. 数据是否随时间更新（等两次轮询）
 console.log('\n[4] 等待 12 秒观察数字是否刷新（每 5 秒一次轮询）')
 const snap1 = await evaluate(`document.querySelector('#box .foot').textContent`)
 await new Promise((r) => setTimeout(r, 12000))

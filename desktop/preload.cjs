@@ -14,6 +14,15 @@ contextBridge.exposeInMainWorld('whaleDesktop', {
       } catch (err) {}
     })
   },
+  // 浮层被隐藏（ZCode 最小化/被盖住）：页面侧的接管标记需要跟着复位，
+  // 否则与主进程的穿透状态不一致，悬停判定会失灵
+  onHidden: (callback) => {
+    ipcRenderer.on('whale:overlay-hidden', () => {
+      try {
+        callback()
+      } catch (err) {}
+    })
+  },
   // 跟随探测间隔（毫秒）：值越小方框跟得越紧
   setFollowInterval: (ms) => ipcRenderer.send('whale:follow-interval', Number(ms)),
   getFollowInterval: () => ipcRenderer.invoke('whale:follow-interval-get'),

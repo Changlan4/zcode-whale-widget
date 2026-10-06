@@ -7,6 +7,10 @@
 > - **已用上下文**：最近一次请求占用了多少 / 上限 100 万
 >
 > 从会话列表点开另一个会话时，方框的数字**跟着切换**。它跟着 ZCode 窗口移动/最小化/关闭，指针不在方框上时点击直接穿透到下面的应用——**不挡任何操作**。
+>
+> **配套插件**：想看**这一问跑得多快**（即时输出速率 / 首 token 延迟 / 采样时刻），装同作者的
+> [`zcode-tps-widget`](https://github.com/Changlan4/zcode-tps-widget)——它把速度方框贴在
+> 本方框**正上方**，UI 风格一致、位置紧挨，两个方框合起来就是「这一问花了多少」+「这一问跑得多快」。
 
 ---
 
@@ -59,7 +63,7 @@
 - **累计花费**，同样三分，附总计。单价按**峰谷**分档，逐条调用按它自己的时刻判档。
 - **已用上下文**：最近一次主请求的输入总量 ÷ 100 万，带进度条。
 - **跟随会话**：从会话列表点开另一个会话，标题与三个数字整体切换。
-- 拖拽移动、贴边吸附、位置与字号记忆（`localStorage`）、每 5 秒刷新。
+- 位置与字号记忆（`localStorage`）、每 5 秒刷新。
 - 浮层下**默认鼠标穿透**：只有指针压在方框上时才接管鼠标。
 
 ### 保留的辅助能力（MCP / 命令行）
@@ -167,7 +171,7 @@ ZCode 插件拿不到客户端 UI 事件。唯一能反映「用户正在看哪�
 
    后面的命令都假设你在仓库根目录下执行。
 
-   > 这是**私人仓库**：需要 GitHub 账号 `Changlan4` 的访问权限，未登录时 `git clone` 会要求认证。上游（本项目的鲸鱼版前身）是 [MeteorNOX/DeepSeek-Balance-Whale-Widget](https://github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget)，不要从那里 clone——那是改造前的旧版本。
+   > 上游（本项目的鲸鱼版前身）是 [MeteorNOX/DeepSeek-Balance-Whale-Widget](https://github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget)，不要从那里 clone——那是改造前的旧版本。
 
 2. **注册为本地插件市场**，二选一：
 
@@ -264,7 +268,7 @@ node lib/cli.mjs json             # 结构化输出，便于脚本消费
 
 ### 方框自己的设置
 
-拖拽移动、贴边吸附自动保存。字号用 `Ctrl/Alt + 滚轮` 调整，双击刷新。这些存在浏览器 localStorage（键 `zcw-box-pos` / `zcw-box-view`）。
+位置与字号自动保存。字号用 `Ctrl/Alt + 滚轮` 调整，双击刷新。这些存在浏览器 localStorage（键 `zcw-box-pos` / `zcw-box-view`）。
 
 ### 自启
 
