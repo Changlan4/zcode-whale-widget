@@ -1,7 +1,7 @@
 NOTICE
 ======
 
-ZCode 版 DeepSeek 余额小鲸鱼挂件（zcode-whale-widget）是以下项目的移植版本：
+ZCode 会话用量方框（zcode-whale-widget）是以下项目的改造版：
 
     MeteorNOX / DeepSeek-Balance-Whale-Widget
     https://github.com/MeteorNOX/DeepSeek-Balance-Whale-Widget
@@ -11,38 +11,46 @@ ZCode 版 DeepSeek 余额小鲸鱼挂件（zcode-whale-widget）是以下项目�
 沿用自上游的部分
 ----------------
 
-1. assets/ 下的全部素材：DSniang1.png、DSniang02.png、rua.gif、Ya1.mp3、Ya2.mp3、
-   D1.mp3、D2.mp3，以及 LICENSE。这些文件原样复制，未作修改。
-
-2. 前端挂件的交互与视觉规格：气泡 SVG 几何（1026×700 画布上的大椭圆、尾巴半椭圆、
-   两个小气泡）、字号档（A/B/P/C 四档与联动变量）、动画参数（数字滚动 700ms ease-out、
-   按压 scaleY(0.88) scaleX(1.05) 与 cubic-bezier(.34,1.56,.64,1)、气泡 5 秒自动收起、
-   60 秒刷新）、拖拽与四分之一吸附、左吸附水平镜像、命中检测按图片 alpha 通道、
-   随机台词六组的文案与权重、两套音效的播放时序。这些在 lib/widget.js 中按同一套
-   参数重写，逻辑与常量与上游一致。
-
-3. 计费口径与定价表：PEAK_HOURS（工作日北京时间 9–12、14–18）、BASE_PRICE、
+1. 计费口径与定价表：PEAK_HOURS（工作日北京时间 9–12、14–18）、BASE_PRICE、
    PRO_PRICE、缓存读取按命中价 / 输入与缓存写入按未命中价 / 输出与思考按输出价、
-   2026-08-23 起周末全天谷价（见 lib/pricing.mjs）。
+   2026-08-23 起周末全天谷价（见 lib/pricing.mjs、lib/pricing-usd.mjs）。
 
-4. 记账模式的语义：按观测到的余额下降累计当日用量、充值不扣减、币种切换只重置基准
+2. 记账模式的语义：按观测到的余额下降累计当日用量、充值不扣减、币种切换只重置基准
    不记差值、跨天归档保留 30 天（见 lib/balance.mjs）。
 
-5. 余额接口的取项规则：多币种数组顺序不固定，优先 CNY 且大于 0，其次任意非零项，
+3. 余额接口的取项规则：多币种数组顺序不固定，优先 CNY 且大于 0，其次任意非零项，
    再退回 CNY 项，最后取第一项；以及 25 秒缓存、in-flight 去重、瞬时失败回退旧值
    并标记 stale、4xx 不重试不回退（见 lib/balance.mjs）。
 
-本移植版新增/改造的部分
-----------------------
+4. 桌面浮层的定位 / 鼠标穿透 / 合成自愈机制（透明无边框置顶窗口、setIgnoreMouseEvents
+   与指针接管、screenToDipRect 视口换算、常驻 PowerShell 跟随脚本），在本仓库
+   desktop/ 与 lib/overlay.mjs 中按同一套做法重写。同作者的配套插件
+   zcode-tps-widget（实时速度方框）复用这份机制。
 
-- 独立的本地 HTTP 挂件服务（lib/server.mjs）与独立页面，替代上游对 DSH 网页的脚本注入。
+已移除的上游部分
+----------------
+
+上游的鲸鱼视觉层已整体删除，不再保留、也不再沿用：
+
+- assets/ 素材（DSniang*.png、rua.gif、Ya*.mp3、D*.mp3）；
+- 气泡 SVG 几何、字号档、数字滚动/按压动画、拖拽与四分之一吸附、左吸附镜像、
+  alpha 通道命中检测、随机台词与音效时序；
+- 与之对应的前端文件 lib/widget.js。
+
+现在的方框是重写的朴素面板（lib/box.js、lib/box-css.mjs）。
+
+本改造版新增的部分
+------------------
+
+- 独立的本地 HTTP 服务（lib/server.mjs）与独立页面，替代上游对 DSH 网页的脚本注入。
+- 会话累计用量的取数（lib/session-usage.mjs）：读 ZCode 的 model_usage / turn_usage 表，
+  统计「当前会话」自新建以来的 token 三分、花费与上下文占用，并跟随会话切换。
 - 凭据发现链（lib/credentials.mjs）：新增「复用 ZCode 客户端里已配的 DeepSeek provider」
   这一来源，并加入出站主机白名单与地址校验。
 - 每轮消耗数据源（lib/turn-cost.mjs）：改为读取 ZCode 的 turn_usage 表，并支持回退到
   模型 I/O 日志。
 - MCP 服务（lib/mcp-server.mjs）、会话自启 hook（lib/autostart.mjs）、命令行入口
   （lib/cli.mjs）、/whale 命令与 skill，均为 ZCode 平台适配新增。
-- 台词中指向 DSH 的文案改为 ZCode（`.zcode` 目录、平台令牌说明）。
 
 上游许可为 MIT，允许使用、复制、修改、合并、发布、分发、再许可和/或销售本软件的
 副本，前提是保留上述版权声明与许可声明。本目录内 LICENSE 即为上游许可原文。
